@@ -9,20 +9,20 @@ CONFIG="/root/GPIO-Predefined"
 handle_option() {
     case $1 in
       1)
-        CUR=$(uci get wireless.inner_guest.disabled 2>/dev/null || echo "1")
-        [ "$CUR" = "1" ] && uci set wireless.inner_guest.disabled='0' \
-                         || uci set wireless.inner_guest.disabled='1'
+        CUR=$(uci get wireless.guest.disabled 2>/dev/null || echo "1")
+        [ "$CUR" = "1" ] && uci set wireless.guest.disabled='0' \
+                         || uci set wireless.guest.disabled='1'
         uci commit wireless && wifi reload
         echo "Guest WiFi toggled."
         ;;
 
       2)
-        if tc qdisc show dev eth1 | grep -q "tbf"; then
-            tc qdisc del dev eth1 root
+        if tc qdisc show dev eth1 | grep -q "htb"; then
+            /etc/init.d/shaper stop
             logger "mr: Shaper OFF"
             echo "Shaper OFF: Full Speed"
         else
-            tc qdisc add dev eth1 root tbf rate 2mbit burst 32kbit latency 400ms
+            /etc/init.d/shaper start
             logger "mr: Shaper ON"
             echo "Shaper ON: Data Protection (Force 480p)"
         fi
@@ -93,5 +93,3 @@ while true; do
     handle_option "$opt"
     echo ""
 done
-
-
