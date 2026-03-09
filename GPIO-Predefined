@@ -1,0 +1,71 @@
+#
+# GPIO-Predefined - Mr3020 Network Configuration
+# Edit values below each section header
+# Lines starting with # are comments and are ignored
+#
+
+# -------------------------------------------------------
+# MODE1 - USB WAN (4G SIM daily driver)
+# No config needed - DHCP from modem, no options
+# -------------------------------------------------------
+[GPIO1]
+
+
+# -------------------------------------------------------
+# MODE2 - Ethernet WAN (hotel / lab / NBN)
+# PROTO=dhcp for most cases
+# Uncomment and fill static lines if fixed IP needed
+# -------------------------------------------------------
+[GPIO2]
+PROTO=dhcp
+IP=
+NETMASK=
+GATEWAY=
+DNS=
+
+#PROTO=static
+#IP=192.168.1.2
+#NETMASK=255.255.255.0
+#GATEWAY=192.168.1.1
+#DNS=8.8.8.8
+
+
+# -------------------------------------------------------
+# MODE3 - WiFi Client WAN (travel / phone hotspot)
+# Fill SSID and KEY for auto-connect
+# Leave SSID blank = skip ext WiFi, use USB WAN + WiFi SSH
+# -------------------------------------------------------
+[GPIO3]
+SSID=
+KEY=
+PROTO=dhcp
+IP=
+NETMASK=
+GATEWAY=
+DNS=
+
+#SSID=ExampleWiFi
+#KEY=examplepass
+#PROTO=static
+#IP=192.168.1.5
+#NETMASK=255.255.255.0
+#GATEWAY=192.168.1.1
+#DNS=8.8.8.8
+
+
+# -------------------------------------------------------
+# SHAPER - Traffic shaping for metered 4G SIM
+# LIMITED_IP = device to throttle (partner's phone etc)
+# RATE = throttled speed (1900kbit forces ~360-480p YouTube)
+# DEFAULT_RATE = full speed class for other devices
+# Note: currently applied on eth1 (Mode1/USB WAN only)
+# Future: mode-aware interface auto-detection
+# -------------------------------------------------------
+[SHAPER]
+LIMITED_IP=192.168.123.149
+RATE=1900kbit
+DEFAULT_RATE=3200kbit
+
+#LIMITED_IP=192.168.123.xxx
+#RATE=1200kbit
+#DEFAULT_RATE=3200kbit

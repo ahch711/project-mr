@@ -1,0 +1,97 @@
+#!/bin/sh
+# Mr Manager - scalable CLI
+# Usage: mr [1-6] or just: mr (interactive menu)
+# Designed as both interactive menu and callable utility.
+# Pass argument directly from other scripts — no shell loop, no hanging.
+
+CONFIG="/root/GPIO-Predefined"
+
+handle_option() {
+    case $1 in
+      1)
+        CUR=$(uci get wireless.inner_guest.disabled 2>/dev/null || echo "1")
+        [ "$CUR" = "1" ] && uci set wireless.inner_guest.disabled='0' \
+                         || uci set wireless.inner_guest.disabled='1'
+        uci commit wireless && wifi reload
+        echo "Guest WiFi toggled."
+        ;;
+
+      2)
+        if tc qdisc show dev eth1 | grep -q "tbf"; then
+            tc qdisc del dev eth1 root
+            logger "mr: Shaper OFF"
+            echo "Shaper OFF: Full Speed"
+        else
+            tc qdisc add dev eth1 root tbf rate 2mbit burst 32kbit latency 400ms
+            logger "mr: Shaper ON"
+            echo "Shaper ON: Data Protection (Force 480p)"
+        fi
+        ;;
+
+      3)
+        echo "--- System Status ---"
+        free -m | grep Mem
+        echo "WAN USB:"
+        ifstatus wan_usb 2>/dev/null | grep '"address"' | head -1
+        echo "WAN ETH:"
+        ifstatus wan 2>/dev/null | grep '"address"' | head -1
+        echo "Mode: $(cat /tmp/current_mode 2>/dev/null || echo 'unknown')"
+        ;;
+
+      4)
+        echo "--- Connected Devices ---"
+        echo "[ARP table]"
+        arp -n 2>/dev/null
+        echo ""
+        echo "[DHCP leases]"
+        cat /tmp/dhcp.leases 2>/dev/null || echo "No leases found."
+        ;;
+
+      5)
+        echo "--- GPIO-Predefined Config ---"
+        cat "$CONFIG" 2>/dev/null || echo "Config file not found: $CONFIG"
+        ;;
+
+      6)
+        STAMP=$(date +%Y%m%d_%H%M%S)
+        OUTFILE="/tmp/mr_extroot_backup_${STAMP}.tar.gz"
+        echo "Backing up extroot overlay to $OUTFILE ..."
+        tar czf "$OUTFILE" /overlay/upper 2>/dev/null
+        if [ $? -eq 0 ]; then
+            SIZE=$(du -sh "$OUTFILE" | cut -f1)
+            echo "Done. Size: $SIZE"
+            echo "To copy out:  scp root@192.168.123.1:$OUTFILE ."
+            logger "mr: extroot backup created: $OUTFILE ($SIZE)"
+        else
+            echo "Backup failed."
+        fi
+        ;;
+
+      q|Q) exit 0 ;;
+      *) echo "Invalid option." ;;
+    esac
+}
+
+# If argument provided → run once and exit (callable mode)
+if [ -n "$1" ]; then
+    handle_option "$1"
+    exit 0
+fi
+
+# Otherwise → interactive menu
+while true; do
+    echo "--- MR3020: [9s2meu] ---"
+    echo "1) Toggle Guest WiFi"
+    echo "2) Toggle Shaper (Limit 480p Video)"
+    echo "3) System Status (RAM / WAN IP / Mode)"
+    echo "4) Show Connected Devices (ARP + DHCP)"
+    echo "5) Show GPIO-Predefined Config"
+    echo "6) Backup extroot/overlay (ready to scp)"
+    echo "q) Exit"
+    printf "Select: "
+    read opt
+    handle_option "$opt"
+    echo ""
+done
+
+

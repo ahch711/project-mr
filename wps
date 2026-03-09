@@ -1,0 +1,220 @@
+#!/bin/sh
+
+### V3. actions of 3, 8, 15, 30 sec ########
+
+trig="/sys/class/leds/tp-link:green:wps/trigger"
+led_on="/sys/class/leds/tp-link:green:wps/delay_on"
+led_off="/sys/class/leds/tp-link:green:wps/delay_off"
+
+# only exec this script at button release and SEEN >= Guest WiFi time
+[ "$ACTION" = "released" ] && [ "$SEEN" -ge 5 ] || exit 0
+
+logger "---- WPS-RESET button: SEEN=$SEEN ----"
+
+if [ "$SEEN" -gt 70 ]; then
+    logger "---***### SEEN=$SEEN >70sec button-hold, All actions cancelled ###***---"
+    exit 0
+fi
+
+# LED Pattern: Yes!? 
+rm -rf /tmp/daemon_LED_Ctrl  # stop daemon LED Ctrl from fighting for LED flashing control
+echo none > $trig
+echo timer > $trig
+echo 200 > $led_on; echo 300 > $led_off;
+sleep 1; echo 200 > $led_on; sleep 0.3; echo 110 > $led_on;
+sleep 1.5;
+
+# Always allow factory reset
+if [ "$SEEN" -ge 49 ]; then
+
+    # pattern calm Factory reset mission
+    echo 600 > $led_on; echo 600 > $led_off;
+
+    logger "##### FACTORY RESET ARMED — 20 second countdown #####"
+    sleep 2
+
+    # patterh Panicing
+    echo 200 > $led_on; echo 200 > $led_off; 
+    # flood the logread
+    for i in 18 16 14 12 10; do
+        logger "!!! FACTORY RESET IN $i SECONDS — CUT POWER TO ABORT !!!"
+        logger "!!! FACTORY RESET IN $i SECONDS ... CUT POWER TO ABORT !!!"
+        sleep 2
+    done
+
+    # pattern Deep Breathe & Hold (Horror Moment)
+    echo 3000 > $led_on; echo 7000 > $led_off;  # Inhale 3s, hold 7s
+    # flood the logread
+    for i in 8 6 4 3 2 1; do                                     
+        logger "!!! FACTORY RESET IN $i SECONDS ... CUT POWER TO ABORT !!!"                             
+        logger "!!! FACTORY RESET IN $i SECONDS ... CUT POWER TO ABORT !!!" 
+        sleep 2                                                                                         
+    done                                                                                                 
+
+    logger "**** FACTORY RESET EXECUTING ****"
+    sleep 2
+    firstboot -y
+    reboot
+
+
+    # Activate Emergency
+elif [ "$SEEN" -ge 29 ] && [ ! -f /tmp/emergency_active ]; then
+
+    # pattern: "Entering Mission" (Slow ramp-up)
+    echo 500 > $led_on; echo 1500 > $led_off;
+
+    logger "#### MR EMERGENCY MODE, initiating in 3sec... ####"
+    sleep 2
+    
+    # pattern: "Actioning" (Fast pulse)
+    echo 100 > $led_on; echo 100 > $led_off;
+    sleep 1
+
+    #flag and log emergency event
+    touch /tmp/emergency_active
+    echo "$(date) Emergency activated" >> /overlay/emergency.log
+
+    # Remove root password (LAN/WiFi only via firewall rule)
+    passwd -d root
+
+    # Disable Guest WiFi and Enable emergency WiFi
+    uci set wireless.inner_guest.disabled='1'
+    uci set wireless.emergency.disabled='0'
+    uci commit wireless
+    wifi reload
+
+    # Ensure SSH only on LAN/WiFi (no WAN)
+    uci set dropbear.@dropbear[0].Interface='lan'
+    uci commit dropbear
+    /etc/init.d/dropbear restart
+
+    # Controlled network reload
+    /etc/init.d/network reload
+
+    # patterh "Mission Completed" (Slow double blink)
+    echo 300 > $led_on; echo 700 > $led_off; sleep 2
+    echo 300 > $led_on; echo 700 > $led_off
+    
+    logger "**** Emergency ACTIVATED ****"
+    sleep 2
+
+
+# Normal reboot
+elif [ "$SEEN" -ge 17 ]; then
+    # pattern Reboot
+    echo 500 > $led_on; echo 500 > $led_off
+
+    logger "#### Reboot triggered, Reboot in 3sec... ####"
+    sleep 1
+
+    # pattern "3sec to bomb explorsion"
+    echo 50 > $led_on; echo 50 > $led_off; 
+    sleep 0.2; echo 50 > $led_on; echo 50 > $led_off; 
+    sleep 0.2; echo 50 > $led_on; echo 50 > $led_off; 
+    sleep 0.2; echo 100 > $led_on; echo 200 > $led_off; 
+    sleep 0.4; echo 150 > $led_on; echo 300 > $led_off;
+
+    logger "**** Normal REBOOTING... ****"
+    sleep 2
+    reboot
+
+
+# Guest toggle
+elif [ "$SEEN" -ge 5 ] && [ ! -f /tmp/emergency_active ]; then
+    # pattern light and easy
+    echo 300 > $led_on; echo 200 > $led_off
+    logger "#### GUEST WiFi toggled, exec in 3sec... ####"
+    sleep 3
+    
+    /usr/bin/mr 1
+
+    # patterh "Mission Completed" (Slow double blink)                                                   
+    echo 300 > $led_on; echo 700 > $led_off; sleep 2                                                    
+    echo 300 > $led_on; echo 700 > $led_off
+
+    logger "**** GUEST WiFi toggle Completed ****"
+    sleep 1
+fi
+
+if [ ! -f /tmp/daemon_LED_Ctrl ]; then
+    # prep custom LED control returning
+    echo none > $trig
+    echo timer > $trig
+    touch /tmp/daemon_LED_Ctrl
+fi
+
+exit 0
+
+
+
+
+
+
+
+: << 'COMMENT'
+################ V0. Below is original wps file by openwrt ######################################
+#!/bin/sh 
+
+wps_catch_credentials() {
+	local iface ifaces ifc ifname ssid encryption key radio radios
+	local found=0
+
+	. /usr/share/libubox/jshn.sh
+	ubus -S -t 30 listen wps_credentials | while read creds; do
+		json_init
+		json_load "$creds"
+		json_select wps_credentials || continue
+		json_get_vars ifname ssid key encryption
+		local ifcname="$ifname"
+		json_init
+		json_load "$(ubus -S call network.wireless status)"
+		json_get_keys radios
+		for radio in $radios; do
+			json_select $radio
+			json_select interfaces
+			json_get_keys ifaces
+			for ifc in $ifaces; do
+				json_select $ifc
+				json_get_vars ifname
+				[ "$ifname" = "$ifcname" ] && {
+					ubus -S call uci set "{\"config\":\"wireless\", \"type\":\"wifi-iface\",		\
+								\"match\": { \"device\": \"$radio\", \"encryption\": \"wps\" },	\
+								\"values\": { \"encryption\": \"$encryption\", 			\
+										\"ssid\": \"$ssid\", 				\
+										\"key\": \"$key\" } }"
+					ubus -S call uci commit '{"config": "wireless"}'
+					ubus -S call uci apply
+				}
+				json_select ..
+			done
+			json_select ..
+			json_select ..
+		done
+	done
+}
+
+if [ "$ACTION" = "pressed" -a "$BUTTON" = "wps" ]; then
+	wps_done=0
+	ubusobjs="$( ubus -S list hostapd.* )"
+	for ubusobj in $ubusobjs; do
+		ubus -S call $ubusobj wps_start && wps_done=1
+	done
+	[ $wps_done = 0 ] || return 0
+	wps_done=0
+	ubusobjs="$( ubus -S list wpa_supplicant.* )"
+	for ubusobj in $ubusobjs; do
+		ifname="$(echo $ubusobj | cut -d'.' -f2 )"
+		multi_ap=""
+		if [ -e "/var/run/wpa_supplicant-${ifname}.conf.is_multiap" ]; then
+			ubus -S call $ubusobj wps_start '{ "multi_ap": true }' && wps_done=1
+		else
+			ubus -S call $ubusobj wps_start && wps_done=1
+		fi
+	done
+	[ $wps_done = 0 ] || wps_catch_credentials &
+fi
+
+return 0
+
+#everything "between" the COMMENT tags, are indeed set as comment 
+COMMENT

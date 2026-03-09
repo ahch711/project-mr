@@ -1,0 +1,67 @@
+#!/bin/sh /etc/rc.common
+# Mr Shaper - v2.0
+# Reads limited IP and rate from GPIO-Predefined [SHAPER] section
+# Primary goal: cap video streaming to ~360-480p on metered 4G SIM
+# Applied to eth1 (USB WAN / Mode1) only - proof of concept
+# Future: mode-aware interface detection
+
+START=99
+
+CONFIG="/root/GPIO-Predefined"
+
+# Safe config parser - handles commented blocks
+getcfg() {
+    awk -F= -v sec="[$1]" -v key="$2" '
+        $0==sec{f=1;next}
+        /^\[/{f=0}
+        f && /^#/{next}
+        f && $1==key{print $2; exit}
+    ' "$CONFIG"
+}
+
+start() {
+    # Read shaper config
+    LIMITED_IP=$(getcfg SHAPER LIMITED_IP)
+    RATE=$(getcfg SHAPER RATE)
+    DEFAULT_RATE=$(getcfg SHAPER DEFAULT_RATE)
+
+    # Fallback defaults if not set
+    RATE=${RATE:-1900kbit}
+    DEFAULT_RATE=${DEFAULT_RATE:-3200kbit}
+
+    # Only apply on eth1 (USB WAN mode)
+    # Future: detect current WAN interface from /tmp/current_mode
+    IFACE="eth1"
+
+    # Clear old rules
+    tc qdisc del dev $IFACE root 2>/dev/null
+
+    # Root HTB qdisc
+    tc qdisc add dev $IFACE root handle 1: htb default 10
+
+    # Default class - full speed
+    tc class add dev $IFACE parent 1: classid 1:10 htb rate $DEFAULT_RATE ceil $DEFAULT_RATE
+
+    # Limited class - for target device
+    tc class add dev $IFACE parent 1: classid 1:20 htb rate $RATE ceil $RATE
+
+    # Attach fq_codel to both
+    tc qdisc add dev $IFACE parent 1:10 handle 10: fq_codel
+    tc qdisc add dev $IFACE parent 1:20 handle 20: fq_codel
+
+    # Apply filter only if LIMITED_IP is set
+    if [ -n "$LIMITED_IP" ]; then
+        tc filter add dev $IFACE protocol ip parent 1: prio 1 u32 \
+            match ip src ${LIMITED_IP}/32 flowid 1:20
+        logger "Shaper: limiting $LIMITED_IP to $RATE on $IFACE"
+    else
+        logger "Shaper: no LIMITED_IP set, default class only"
+    fi
+
+    logger "Shaper: started on $IFACE (default $DEFAULT_RATE / limited $RATE)"
+}
+
+stop() {
+    tc qdisc del dev eth1 root 2>/dev/null
+    logger "Shaper: stopped"
+}
