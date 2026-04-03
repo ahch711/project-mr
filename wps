@@ -1,13 +1,14 @@
 #!/bin/sh
+# v2.0 Mar 2026
 
-### V3. actions of 3, 8, 15, 30 sec ########
+### actions at 4+, 9+, 18+, 30+, 50-70 sec ########
 
 trig="/sys/class/leds/tp-link:green:wps/trigger"
 led_on="/sys/class/leds/tp-link:green:wps/delay_on"
 led_off="/sys/class/leds/tp-link:green:wps/delay_off"
 
-# only exec this script at button release and SEEN >= Guest WiFi time
-[ "$ACTION" = "released" ] && [ "$SEEN" -ge 5 ] || exit 0
+# only exec this script at button release and SEEN >= toggle WiFi time
+[ "$ACTION" = "released" ] && [ "$SEEN" -ge 3 ] || exit 0
 
 logger "---- WPS-RESET button: SEEN=$SEEN ----"
 
@@ -74,19 +75,21 @@ elif [ "$SEEN" -ge 29 ] && [ ! -f /tmp/emergency_active ]; then
     touch /tmp/emergency_active
     echo "$(date) Emergency activated" >> /overlay/emergency.log
 
-    # Remove root password (LAN/WiFi only via firewall rule)
-    passwd -d root
-
     # Disable Guest WiFi and Enable emergency WiFi
     uci set wireless.inner_guest.disabled='1'
     uci set wireless.emergency.disabled='0'
     uci commit wireless
     wifi reload
 
-    # Ensure SSH only on LAN/WiFi (no WAN)
-    uci set dropbear.@dropbear[0].Interface='lan'
-    uci commit dropbear
-    /etc/init.d/dropbear restart
+    # --- Emergency SSH Access ---
+    # 1. Remove root password
+    passwd -d root
+
+    # 2. Ensure firewall allows both doors (Flush any blocks from Mode 1 or 2)
+    iptables -D INPUT -i br-lan -p tcp --dport 22 -j DROP 2>/dev/null
+    iptables -D INPUT -i br-wifi_iso -p tcp --dport 22 -j DROP 2>/dev/null
+
+    logger "EMERGENCY: Password removed, SSH open on LAN+WiFi"
 
     # Controlled network reload
     /etc/init.d/network reload
@@ -120,7 +123,7 @@ elif [ "$SEEN" -ge 17 ]; then
 
 
 # Guest toggle
-elif [ "$SEEN" -ge 5 ] && [ ! -f /tmp/emergency_active ]; then
+elif [ "$SEEN" -ge 8 ] && [ ! -f /tmp/emergency_active ]; then
     # pattern light and easy
     echo 300 > $led_on; echo 200 > $led_off
     logger "#### GUEST WiFi toggled, exec in 3sec... ####"
@@ -134,7 +137,19 @@ elif [ "$SEEN" -ge 5 ] && [ ! -f /tmp/emergency_active ]; then
 
     logger "**** GUEST WiFi toggle Completed ****"
     sleep 1
+
+# Hotspot swap — hold 3 to 7sec
+elif [ "$SEEN" -ge 3 ] && [ ! -f /tmp/emergency_active ]; then
+    echo 100 > $led_on; echo 100 > $led_off
+    logger "#### HOTSPOT SWAP triggered ####"
+    sleep 1
+    /root/hotspot_swap.sh &
+    echo 300 > $led_on; echo 700 > $led_off; sleep 2
+    echo 300 > $led_on; echo 700 > $led_off
+    logger "**** HOTSPOT SWAP initiated ****"
+    sleep 1
 fi
+
 
 if [ ! -f /tmp/daemon_LED_Ctrl ]; then
     # prep custom LED control returning
@@ -144,77 +159,3 @@ if [ ! -f /tmp/daemon_LED_Ctrl ]; then
 fi
 
 exit 0
-
-
-
-
-
-
-
-: << 'COMMENT'
-################ V0. Below is original wps file by openwrt ######################################
-#!/bin/sh 
-
-wps_catch_credentials() {
-	local iface ifaces ifc ifname ssid encryption key radio radios
-	local found=0
-
-	. /usr/share/libubox/jshn.sh
-	ubus -S -t 30 listen wps_credentials | while read creds; do
-		json_init
-		json_load "$creds"
-		json_select wps_credentials || continue
-		json_get_vars ifname ssid key encryption
-		local ifcname="$ifname"
-		json_init
-		json_load "$(ubus -S call network.wireless status)"
-		json_get_keys radios
-		for radio in $radios; do
-			json_select $radio
-			json_select interfaces
-			json_get_keys ifaces
-			for ifc in $ifaces; do
-				json_select $ifc
-				json_get_vars ifname
-				[ "$ifname" = "$ifcname" ] && {
-					ubus -S call uci set "{\"config\":\"wireless\", \"type\":\"wifi-iface\",		\
-								\"match\": { \"device\": \"$radio\", \"encryption\": \"wps\" },	\
-								\"values\": { \"encryption\": \"$encryption\", 			\
-										\"ssid\": \"$ssid\", 				\
-										\"key\": \"$key\" } }"
-					ubus -S call uci commit '{"config": "wireless"}'
-					ubus -S call uci apply
-				}
-				json_select ..
-			done
-			json_select ..
-			json_select ..
-		done
-	done
-}
-
-if [ "$ACTION" = "pressed" -a "$BUTTON" = "wps" ]; then
-	wps_done=0
-	ubusobjs="$( ubus -S list hostapd.* )"
-	for ubusobj in $ubusobjs; do
-		ubus -S call $ubusobj wps_start && wps_done=1
-	done
-	[ $wps_done = 0 ] || return 0
-	wps_done=0
-	ubusobjs="$( ubus -S list wpa_supplicant.* )"
-	for ubusobj in $ubusobjs; do
-		ifname="$(echo $ubusobj | cut -d'.' -f2 )"
-		multi_ap=""
-		if [ -e "/var/run/wpa_supplicant-${ifname}.conf.is_multiap" ]; then
-			ubus -S call $ubusobj wps_start '{ "multi_ap": true }' && wps_done=1
-		else
-			ubus -S call $ubusobj wps_start && wps_done=1
-		fi
-	done
-	[ $wps_done = 0 ] || wps_catch_credentials &
-fi
-
-return 0
-
-#everything "between" the COMMENT tags, are indeed set as comment 
-COMMENT

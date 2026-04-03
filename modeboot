@@ -1,4 +1,5 @@
 #!/bin/sh /etc/rc.common
+# v2.0 Mar 2026
 
 START=95
 STOP=10
@@ -6,7 +7,11 @@ STOP=10
 #USE_PROCD=1 # line possibly not needed since this is a one time exec during boot process
 
 start() {
+    touch /tmp/modeboot_running
     logger "MODEBOOT: Starting mode detection"
+
+    # Safety: ensure cleanup happens even if modeboot dies halfway
+    trap 'rm -f /tmp/modeboot_running; echo "UNKNOWN $(date +%s)" > /tmp/modeboot_mode_exec' EXIT
 
     # remove system handling GPIO
     rmmod gpio_button_hotplug
@@ -16,7 +21,7 @@ start() {
         [ ! -d /sys/class/gpio/gpio$p ] && echo $p > /sys/class/gpio/export
     done
 
-    sleep 1
+    sleep 3
 
     V18=$(cat /sys/class/gpio/gpio18/value)
     V20=$(cat /sys/class/gpio/gpio20/value)
@@ -29,41 +34,38 @@ start() {
     # return GPIOhandle to system
     insmod /lib/modules/*/gpio-button-hotplug.ko
 
+    # prep Guest and Emergency WiFi off                                    
+    uci set wireless.inner_guest.disabled='1'               
+    uci set wireless.emergency.disabled='1'                     
+    uci commit wireless                                         
+    wifi reload                                             
+    logger "MODEBOOT: Guest+Emergency Wifi disabled" 
+
+    MODE=""
     case "$V18$V20" in
-        "10")
-            logger "MODEBOOT: MODE1 (USB WAN)"
-            /root/mode_manager.sh MODE1
-            ;;
-        "01")
-            logger "MODEBOOT: MODE2 (RJ45 WAN)"
-            /root/mode_manager.sh MODE2
-            ;;
-        "11")
-            logger "MODEBOOT: MODE3 (External WiFi)"
-            /root/mode_manager.sh MODE3
-            ;;
+        "10") MODE="MODE1" ;;
+        "01") MODE="MODE2" ;;
+        "11") MODE="MODE3" ;;
         *)
             logger "MODEBOOT: Unknown switch state $V18$V20"
+            exit 1  # this will trigger Trap to rm modeboot_running + echo UNKNOWN modeboot_mode_exec
             ;;
     esac
-
-    logger "MODEBOOT: Switch detection $V18$V20"
-
-    # prep Guest and Emergency WiFi off                                                  
-    uci set wireless.inner_guest.disabled='1'                                                  
-    uci set wireless.emergency.disabled='1'                                
-    uci commit wireless 
-    wifi reload
-    logger "MODEBOOT: Guest+Emergency Wifi disabled"
+    logger "MODEBOOT: Switch detection $V18$V20 = $MODE"
+    logger "MODEBOOT: calling mode_manager $MODE"
+    /root/mode_manager.sh "$MODE"
 
     # Restart network cleanly
     /etc/init.d/network restart
-
     logger "MODEBOOT: Network Restarted. Modeboot Exiting..."
 
     touch /tmp/daemon_LED_Ctrl
     /root/led_daemon.sh &  #start the LED daemon
     logger "MODEBOOT: LED_Ctrl created + daemon started"
-}
 
+    echo "$MODE $(date +%s)" > /tmp/modeboot_mode_exec
+    logger "MODEBOOT: Boot complete, button switching enabled" 
+    rm -f /tmp/modeboot_running
+    trap - EXIT  # MODEBOOT completed normally, hence EXIT trap flagging
+}
 

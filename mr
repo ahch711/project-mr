@@ -1,34 +1,23 @@
 #!/bin/sh
 # Mr Manager - scalable CLI
-# Usage: mr [1-6] or just: mr (interactive menu)
+# Usage: mr [1-9] or just: mr (interactive menu)
 # Designed as both interactive menu and callable utility.
 # Pass argument directly from other scripts — no shell loop, no hanging.
+# v2.0 Mar 2026
 
 CONFIG="/root/GPIO-Predefined"
 
 handle_option() {
     case $1 in
       1)
-        CUR=$(uci get wireless.guest.disabled 2>/dev/null || echo "1")
-        [ "$CUR" = "1" ] && uci set wireless.guest.disabled='0' \
-                         || uci set wireless.guest.disabled='1'
+        CUR=$(uci get wireless.inner_guest.disabled 2>/dev/null || echo "1")
+        [ "$CUR" = "1" ] && uci set wireless.inner_guest.disabled='0' \
+                         || uci set wireless.inner_guest.disabled='1'
         uci commit wireless && wifi reload
         echo "Guest WiFi toggled."
         ;;
 
       2)
-        if tc qdisc show dev eth1 | grep -q "htb"; then
-            /etc/init.d/shaper stop
-            logger "mr: Shaper OFF"
-            echo "Shaper OFF: Full Speed"
-        else
-            /etc/init.d/shaper start
-            logger "mr: Shaper ON"
-            echo "Shaper ON: Data Protection (Force 480p)"
-        fi
-        ;;
-
-      3)
         echo "--- System Status ---"
         free -m | grep Mem
         echo "WAN USB:"
@@ -38,21 +27,119 @@ handle_option() {
         echo "Mode: $(cat /tmp/current_mode 2>/dev/null || echo 'unknown')"
         ;;
 
+      3)                                                                                              
+        if tc qdisc show dev br-wifi_iso | grep -q "htb"; then                                        
+            /etc/init.d/shaper stop                                                                   
+            logger "mr: Shaper OFF on br-wifi_iso"                                                    
+            echo "br-wifi Shaper OFF: Full Speed"                                                     
+        else                                                                                          
+            /etc/init.d/shaper start                                                                  
+            logger "mr: Shaper ON on br-wifi_iso"                                                     
+            echo "br-wifi_iso Shaper ON: Data Protection (Force 480p)"                                
+        fi                                                                                            
+        ;; 
+
       4)
         echo "--- Connected Devices ---"
+        echo ""
         echo "[ARP table]"
-        arp -n 2>/dev/null
+        cat /proc/net/arp | grep -v "^IP" | grep -v "00:00:00:00:00:00"
         echo ""
         echo "[DHCP leases]"
-        cat /tmp/dhcp.leases 2>/dev/null || echo "No leases found."
+        cat /tmp/dhcp.leases 2>/dev/null
+        echo ""
+        echo "[Shaper Config]"
+        grep -A5 "\[SHAPER\]" /root/GPIO-Predefined | grep -v "^#" | grep -v "^$"
         ;;
 
       5)
-        echo "--- GPIO-Predefined Config ---"
-        cat "$CONFIG" 2>/dev/null || echo "Config file not found: $CONFIG"
+        echo "=== Add Device to DHCP ==="
+        echo ""
+        echo "[Current static allocations]"
+        grep -A3 "config host" /etc/config/dhcp | \
+            grep -E "name|mac|ip" | \
+            sed 's/\toption //' | \
+            awk 'NR%3==1{n=$0} NR%3==2{m=$0} NR%3==0{print n" | "m" | "$0}'        
+
+        echo ""
+        printf "Hostname: "; read H
+        printf "MAC (xx:xx:xx:xx:xx:xx): "; read M
+        printf "IP (192.168.231.x): "; read I
+    
+        [ -z "$H" ] || [ -z "$M" ] || [ -z "$I" ] && \
+            echo "All fields required" && break
+
+        # Check for duplicate MAC
+        if grep -q "$M" /etc/config/dhcp; then
+            echo "MAC $M already exists in DHCP config"
+            echo "Edit /etc/config/dhcp manually to update"
+            break
+        fi
+
+        if grep -q "$I" /etc/config/dhcp; then                                   
+            echo "IP $I already exists in DHCP config"                          
+            echo "Edit /etc/config/dhcp manually to update"                      
+            break                                                                
+        fi 
+
+        uci add dhcp host
+        uci set dhcp.@host[-1].name="$H"
+        uci set dhcp.@host[-1].mac="$M"
+        uci set dhcp.@host[-1].ip="$I"
+        uci commit dhcp
+        /etc/init.d/dnsmasq restart >/dev/null 2>&1
+        echo "Added: $M → $I ($H)"
         ;;
 
       6)
+        echo "+++ Shaper Stats on br-wifi_iso +++"
+        echo ""
+        tc -s class show dev br-wifi_iso | grep -A2 "class htb 1:1"
+        echo ""
+        echo "[Filter]"
+        tc filter show dev br-wifi_iso | grep "match\|flowid"
+        echo ""
+        echo "Tip: Toggle Shaper OFF/ON (mr 3) then run speedtest.net to confirm"
+        ;;
+
+      7)
+        MODE=$(cat /tmp/current_mode 2>/dev/null)
+        if [ "$MODE" = "MODE2" ]; then
+            echo "SSH WiFi toggle not available in MODE2"
+            echo "Toggle to MODE1 or MODE3 first"
+            break
+        fi
+        # Check current SSH-WIFI-ISO rule, if the BLOCK rule exists
+        if iptables -C INPUT -i br-wifi_iso -p tcp --dport 22 -j DROP 2>/dev/null; then
+            # Rule EXISTS (The door is currently CLOSED)
+            # We DELETE the block to OPEN the door
+            iptables -D INPUT -i br-wifi_iso -p tcp --dport 22 -j DROP
+            logger "mr: SSH via WiFi ALLOWED"
+            echo "SSH via WiFi: ON"
+        else
+            # Rule MISSING (The door is currently OPEN)
+            # We ADD the block to CLOSE the door
+            iptables -I INPUT -i br-wifi_iso -p tcp --dport 22 -j DROP
+            logger "mr: SSH via WiFi BLOCKED"
+            echo "SSH via WiFi: OFF"
+        fi
+        ;;
+
+      8)
+        if crontab -l | grep -q "wan_watch"; then
+            crontab -l | grep -v "wan_watch" > /tmp/crontab.tmp
+            crontab /tmp/crontab.tmp
+            rm /tmp/crontab.tmp
+            echo "wan_watch DISABLED"
+            logger "MR: wan_watch disabled via menu"
+        else
+            (crontab -l; echo "*/20 * * * * /root/wan_watch.sh") | crontab -
+            echo "wan_watch ENABLED (every 20min)"
+            logger "MR: wan_watch enabled via menu"
+        fi
+        ;;
+
+      9)
         STAMP=$(date +%Y%m%d_%H%M%S)
         OUTFILE="/tmp/mr_extroot_backup_${STAMP}.tar.gz"
         echo "Backing up extroot overlay to $OUTFILE ..."
@@ -82,14 +169,19 @@ fi
 while true; do
     echo "--- MR3020: [9s2meu] ---"
     echo "1) Toggle Guest WiFi"
-    echo "2) Toggle Shaper (Limit 480p Video)"
-    echo "3) System Status (RAM / WAN IP / Mode)"
-    echo "4) Show Connected Devices (ARP + DHCP)"
-    echo "5) Show GPIO-Predefined Config"
-    echo "6) Backup extroot/overlay (ready to scp)"
+    echo "2) System Status (RAM / WAN IP / Mode)"
+    echo "3) Toggle Shaper (Limit 480p Video)"
+    echo "4) Show Devices + Shaper Config"
+    echo "5) Enter Device Details for Shaper"
+    echo "6) Check Shaper tc Details"
+    echo "7) Toggle SSH via WiFi (blocked in MODE2)"
+    echo "8) Toggle wan_watch (cron)"
+    echo "9) Backup extroot/overlay (ready to scp)"
     echo "q) Exit"
     printf "Select: "
     read opt
     handle_option "$opt"
     echo ""
 done
+
+
