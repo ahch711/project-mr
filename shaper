@@ -3,7 +3,7 @@
 # Reads subnet, mask, and rates from GPIO-Predefined [SHAPER] section
 # Primary goal: cap video streaming to ~360-480p on metered 4G SIM
 # Applied to eth1 (USB WAN / Mode1) only - proof of concept
-# v2.1 Mar 2026 - Added CIDR support for /29 blocks
+# v2.1 Mar 2026 - Added CIDR support for /28 blocks
 
 START=99
 CONFIG="/root/GPIO-Predefined"
