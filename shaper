@@ -1,15 +1,13 @@
 #!/bin/sh /etc/rc.common
-# Mr Shaper - v2.0
-# Reads limited IP and rate from GPIO-Predefined [SHAPER] section
+# Mr Shaper - v2.1 (Subnet Aware)
+# Reads subnet, mask, and rates from GPIO-Predefined [SHAPER] section
 # Primary goal: cap video streaming to ~360-480p on metered 4G SIM
 # Applied to eth1 (USB WAN / Mode1) only - proof of concept
-# Future: mode-aware interface detection
+# v2.1 Mar 2026 - Added CIDR support for /29 blocks
 
 START=99
-
 CONFIG="/root/GPIO-Predefined"
 
-# Safe config parser - handles commented blocks
 getcfg() {
     awk -F= -v sec="[$1]" -v key="$2" '
         $0==sec{f=1;next}
@@ -21,17 +19,18 @@ getcfg() {
 
 start() {
     # Read shaper config
-    LIMITED_IP=$(getcfg SHAPER LIMITED_IP)
+    SUB=$(getcfg SHAPER LIMITED_SUB)
+    MASK=$(getcfg SHAPER SUB_MASK)
     RATE=$(getcfg SHAPER RATE)
     DEFAULT_RATE=$(getcfg SHAPER DEFAULT_RATE)
 
-    # Fallback defaults if not set
-    RATE=${RATE:-1900kbit}
-    DEFAULT_RATE=${DEFAULT_RATE:-3200kbit}
+    # Fallback defaults
+    SUB=${SUB:-192.168.231.80}
+    MASK=${MASK:-28}
+    RATE=${RATE:-6000kbit}
+    DEFAULT_RATE=${DEFAULT_RATE:-8000kbit}
 
-    # Only apply on eth1 (USB WAN mode)
-    # Future: detect current WAN interface from /tmp/current_mode
-    IFACE="eth1"
+    IFACE="br-wifi_iso"  # Target the bridge directly
 
     # Clear old rules
     tc qdisc del dev $IFACE root 2>/dev/null
@@ -42,26 +41,24 @@ start() {
     # Default class - full speed
     tc class add dev $IFACE parent 1: classid 1:10 htb rate $DEFAULT_RATE ceil $DEFAULT_RATE
 
-    # Limited class - for target device
+    # Limited class - for target subnet
     tc class add dev $IFACE parent 1: classid 1:20 htb rate $RATE ceil $RATE
 
-    # Attach fq_codel to both
+    # Attach fq_codel for stability
     tc qdisc add dev $IFACE parent 1:10 handle 10: fq_codel
     tc qdisc add dev $IFACE parent 1:20 handle 20: fq_codel
 
-    # Apply filter only if LIMITED_IP is set
-    if [ -n "$LIMITED_IP" ]; then
-        tc filter add dev $IFACE protocol ip parent 1: prio 1 u32 \
-            match ip src ${LIMITED_IP}/32 flowid 1:20
-        logger "Shaper: limiting $LIMITED_IP to $RATE on $IFACE"
-    else
-        logger "Shaper: no LIMITED_IP set, default class only"
-    fi
+    # Apply filter using CIDR notation (Subnet/Mask)
+    # Using 'ip src' because we are shaping traffic GOING TO the WAN from br-wifi_iso
+    tc filter add dev $IFACE protocol ip parent 1: prio 1 u32 \
+        match ip src ${SUB}/${MASK} flowid 1:20
 
-    logger "Shaper: started on $IFACE (default $DEFAULT_RATE / limited $RATE)"
+    logger "Shaper: limiting ${SUB}/${MASK} to $RATE on $IFACE"
 }
 
 stop() {
-    tc qdisc del dev eth1 root 2>/dev/null
-    logger "Shaper: stopped"
+    tc qdisc del dev br-wifi_iso root 2>/dev/null   #logic to stop br-wifi_iso interface    
+                                                                                     
+    logger "Shaper: stopped on br-wifi_iso interface"
 }
+

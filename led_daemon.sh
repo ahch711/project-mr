@@ -1,4 +1,5 @@
 #!/bin/sh
+# v2.0 Mar 2026
 
 LED="/sys/class/leds/tp-link:green:wps/brightness"
 MODE_FILE="/tmp/current_mode"
