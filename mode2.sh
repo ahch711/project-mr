@@ -65,7 +65,7 @@ uci commit network
 
 # Bring up Ethernet WAN
 ifup wan_eth
-sleep 3
+sleep 10
 
 # Confirm WAN up
 if ifstatus wan_eth | grep -q '"up": true'; then

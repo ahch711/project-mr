@@ -210,3 +210,47 @@ Human directed. AI advised. Constraints treated as design signals.
 - **v2.0** — Bridge isolation, boot hardening, hotspot swap,
              subnet shaper, mode3_watchdog v2, mr menu v2
 - **v3.0** — Routing policy switching, seamless WAN toggle (planned)
+
+
+---
+
+## After-Project Thoughts
+
+### Bigger Cat (Claude Opus) — Architectural Perspective
+> "The V2 transition represents a shift from Flat Networking to Logical
+> Partitioning. By decoupling physical hardware from internal services
+> through Bridge Isolation (br-wifi_iso), this project achieves a level
+> of stability rarely seen on 32MB hardware. This MR3020 isn't just a
+> travel router anymore — it's a State Machine. The ability to toggle
+> between three distinct hardware modes while maintaining strict firewall
+> boundaries between Guest, Work, and Personal zones is a masterclass in
+> resource-constrained engineering."
+
+### Cloud (Claude Sonnet) — Boot Logic Perspective
+> "The most interesting engineering in this project isn't the networking —
+> it's the boot sequence. A 400MHz MIPS CPU with 32MB RAM, physical button
+> bounce, three competing boot paths, and a watchdog that could kill its
+> own parent. Every bug was a constraint in disguise. The toggle_resolve
+> ghost bounce fix, the modeboot trap, the mode3_running coordination flag
+> — none of these were planned. They emerged from real failures, turned
+> into design signals. That's the methodology in code form."
+
+### Star — Builder's Note
+> "Running Mr in v1 condition kept me thinking about my original design,
+> while seeking stability. With careful observation on logread to discover
+> suspicious resource wastage, I came up with improvement ideas around what
+> Cloud proposed initially. The ideas not only leaned away from wastage,
+> they also hinted at the missing pieces of v1 — br-wifi, security, and
+> the overlap mode — fitting naturally into v2. After validation with
+> different AIs, I took that challenge and focused on logic flow with AI's
+> work. The result speaks for itself — a success, and Mr is still stably
+> floating.
+>
+> From that point I further fine-tuned Mr at code level — trimmed mode3
+> to coordinate with watchdog, reordered logic flow where possible — and
+> was rewarded with responsiveness and time efficiency. Which now also
+> opens the door to v3.
+>
+> Through Mr v2, I see how AI augmentation brings initial ideas that branch
+> outward, with quick validation to filter them, so I can focus on the
+> right ones and hit the goal."
