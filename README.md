@@ -1,9 +1,34 @@
 # project-mr — MR3020 OpenWrt Travel Router
 ### "The Modular Fortress" — v2.0
 
+*Full origin story and build journey: [README v1](README_V1.md)*
+
 **Hardware:** TP-Link TL-MR3020 v1 | OpenWrt 19.07.10 | 4MB Flash / 32MB RAM  
 **GitHub:** github.com/ahch711/project-mr  
 **Version:** v2.0 — April 2026
+
+---
+
+> **A $22 travel router transformed into a self-managing, multi-WAN network gateway —
+> demonstrating constraint-driven embedded Linux engineering, daemon architecture,
+> and human-AI collaborative development methodology.**
+
+## Project Impact & Results
+
+| Metric | Result |
+|--------|--------|
+| 💰 Annual saving vs NBN | ~$700 AUD/yr |
+| 🔧 Total hardware cost | $22.10 AUD |
+| 🧠 RAM ceiling | Stable on 32MB RAM / 4MB Flash |
+| ⏱️ Build velocity | 8 weeks: zero OpenWrt knowledge → stable daily-driver |
+| 🎈 OOM incidents since deployment | Zero |
+| 📡 WAN modes | 3 (USB modem, Ethernet, WiFi client) |
+| 🤖 Methodology | Human-AI collaborative engineering (Team Musketeers) |
+
+> On the 8 weeks: started from zero OpenWrt familiarity, ran proof-of-concept phase,
+> debugged real hardware constraints, and developed a human-AI collaboration methodology
+> from scratch. In a known environment, equivalent scope would take 2–3 days.
+> The full build journey and origin story: [README v1](README_V1.md)
 
 ---
 
@@ -33,6 +58,7 @@ wan_wifi  wlan0   — External WiFi client / hotspot (Mode3)
 ### Bridge Isolation (v2 key feature)
 br-lan (eth0)
 └── management subnet — SSH in Mode1 via RJ45
+
 br-wifi_iso (wlan0-1)
 └── isolated client subnet — all WiFi clients
 └── Shaper applied here — subnet /28 aware
@@ -211,6 +237,24 @@ Human directed. AI advised. Constraints treated as design signals.
              subnet shaper, mode3_watchdog v2, mr menu v2
 - **v3.0** — Routing policy switching, seamless WAN toggle (planned)
 
+# ─────────────────────────────────────────────────────────────────────
+
+## Engineering Evolution: V1 → V2
+
+Same hardware. Same budget. One week of focused observation and logic work.
+
+| Area | V1.0 | V2.0 | What changed |
+|------|------|------|--------------|
+| **Network design** | Flat — all interfaces sharing br-lan | Bridge isolation — br-wifi_iso separates WiFi clients from management | Security boundary now enforced at kernel level |
+| **SSH access policy** | Not mode-aware — accessible from all interfaces | Per-mode iptables policy — Mode1 blocks WiFi SSH, Mode2 blocks RJ45 | Behaviour matches intent, not just config |
+| **Traffic shaper** | Applied to eth1 (Mode1 only) | Applied to br-wifi_iso — subnet /28 aware, all modes | Shaper follows the client subnet, not the WAN interface |
+| **Boot sequence** | Basic GPIO detection | Hardened — ghost bounce suppressed, modeboot trap, running flag coordination | Real failures turned into design signals |
+| **Mode3 watchdog** | v1 — basic reconnect | v2 — fallback to USB WAN, coordinates with mode3_running flag | Watchdog no longer capable of killing its own parent |
+| **Hotspot swap** | Not present | WPS 3–7s hold swaps between two predefined SSIDs | Travel use case — no SSH needed to switch hotspot |
+| **Power envelope** | USB hub + separate power per device | Entire system (Mr + phone) on 5V/1A — AC or powerbank | Thermal and power discipline at system level |
+| **Mode3 overlap** | Not present | Blank SSID → USB WAN + WiFi SSH open | Gap in v1 filled naturally by v2 bridge design |
+| **Resource efficiency** | Daemons with redundant loops | Trimmed — mode3 coordinates with watchdog, reordered logic flow | Responsiveness gain without hardware change |
+| **Discovery method** | Vision + instinct | logread observation → suspicious wastage → improvement ideas | Methodology matured: observe → hypothesise → validate → implement |
 
 ---
 
