@@ -9,9 +9,11 @@
 
 ---
 
-> **A $22 travel router transformed into a self-managing, multi-WAN network gateway —
+> ***A $22 travel router transformed into a self-managing, multi-WAN network gateway —
 > demonstrating constraint-driven embedded Linux engineering, daemon architecture,
-> and human-AI collaborative development methodology.**
+> and human-AI collaborative development methodology.***
+
+---
 
 ## Project Impact & Results
 
@@ -55,13 +57,14 @@ wan_usb   usb0    — USB modem / RNDIS tethering (Mode1)
 wan_eth   eth0    — RJ45 Ethernet WAN (Mode2)
 wan_wifi  wlan0   — External WiFi client / hotspot (Mode3)
 
+
 ### Bridge Isolation (v2 key feature)
-br-lan (eth0)
+br-lan (eth0) 
 └── management subnet — SSH in Mode1 via RJ45
 
-br-wifi_iso (wlan0-1)
-└── isolated client subnet — all WiFi clients
-└── Shaper applied here — subnet /28 aware
+br-wifi_iso (wlan0-1) 
+└── isolated client subnet — all WiFi clients 
+└── Shaper applied here — subnet /28 aware 
 └── SSH controllable per mode via iptables
 
 ---
@@ -150,7 +153,6 @@ Toggle SSH via WiFi anytime: mr menu option 7 (blocked in Mode2).
 ---
 
 ## mr Menu
-
 Toggle Guest WiFi
 System Status (RAM / WAN IP / Mode)
 Toggle Shaper (Limit 480p Video)
@@ -190,7 +192,6 @@ mr                    — management menu
 GPIO-Predefined     — SSID, keys, shaper config (personal)
 hotspot_sets        — hotspot credentials (personal)
 /etc/config/        — wireless, network, dhcp, firewall (personal)
-
 
 Add to .gitignore:
 GPIO-Predefined
@@ -237,9 +238,22 @@ Human directed. AI advised. Constraints treated as design signals.
              subnet shaper, mode3_watchdog v2, mr menu v2
 - **v3.0** — Routing policy switching, seamless WAN toggle (planned)
 
-# ─────────────────────────────────────────────────────────────────────
+---
 
-## Engineering Evolution: V1 → V2
+## Why v2.0?
+
+v1.0 solved the original problem: reliable, cheap internet on constrained hardware.
+v2.0 asked the next question: *now that it works, does it work correctly?*
+
+The shift wasn't driven by new requirements — it came from observation.
+Watching `logread` revealed suspicious resource patterns in v1.
+Those patterns pointed to architectural gaps: flat networking where isolation
+was needed, daemons with redundant loops, boot logic that couldn't suppress
+ghost bounces. v2.0 fixed the gaps v1.0 didn't know it had.
+
+---
+
+## Changelog / Engineering Evolution: V1 → V2
 
 Same hardware. Same budget. One week of focused observation and logic work.
 
@@ -255,6 +269,11 @@ Same hardware. Same budget. One week of focused observation and logic work.
 | **Mode3 overlap** | Not present | Blank SSID → USB WAN + WiFi SSH open | Gap in v1 filled naturally by v2 bridge design |
 | **Resource efficiency** | Daemons with redundant loops | Trimmed — mode3 coordinates with watchdog, reordered logic flow | Responsiveness gain without hardware change |
 | **Discovery method** | Vision + instinct | logread observation → suspicious wastage → improvement ideas | Methodology matured: observe → hypothesise → validate → implement |
+| Code quality | Manual on-device testing | ShellCheck CI via GitHub Actions | Automated Linting |
+
+The improvements weren't planned upfront — they emerged from running v1.0
+under real conditions and treating every anomaly as a design signal.
+That's the methodology: observe, hypothesise, validate, implement.
 
 ---
 
