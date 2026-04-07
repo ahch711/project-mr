@@ -21,7 +21,4 @@ jobs:
           severity: warning
           # Scan all .sh files in repo root
           scandir: './'
-        env:
-          SHELLCHECK_OPTS: >
-            --shell=sh
-            --exclude=SC1091
+          ignore_codes: SC1091
