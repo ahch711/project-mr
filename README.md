@@ -47,25 +47,25 @@ Not a travel router anymore — a modular fortress.
 ## Architecture
 
 ### Network Topology
-Physical Switch → GPIO Detection → modeboot → mode_manager → modeX.sh
-Internal Networks:
-br-lan       192.168.x.1    — Management LAN (eth0, RJ45)
-br-wifi_iso  192.168.y.1    — Isolated WiFi clients (wlan0-1, AP)
-guest        10.168.z.1     — Guest WiFi (isolated, internet only)
+Physical Switch → GPIO Detection → modeboot → mode_manager → modeX.sh  
+Internal Networks:  
+br-lan       192.168.x.1    — Management LAN (eth0, RJ45)  
+br-wifi_iso  192.168.y.1    — Isolated WiFi clients (wlan0-1, AP)  
+guest        10.168.z.1     — Guest WiFi (isolated, internet only)  
 WAN Sources:
-wan_usb   usb0    — USB modem / RNDIS tethering (Mode1)
-wan_eth   eth0    — RJ45 Ethernet WAN (Mode2)
-wan_wifi  wlan0   — External WiFi client / hotspot (Mode3)
+wan_usb   usb0    — USB modem / RNDIS tethering (Mode1)  
+wan_eth   eth0    — RJ45 Ethernet WAN (Mode2)  
+wan_wifi  wlan0   — External WiFi client / hotspot (Mode3)  
 
 
 ### Bridge Isolation (v2 key feature)
-br-lan (eth0) 
-└── management subnet — SSH in Mode1 via RJ45
+br-lan (eth0)   
+└── management subnet — SSH in Mode1 via RJ45  
 
-br-wifi_iso (wlan0-1) 
-└── isolated client subnet — all WiFi clients 
-└── Shaper applied here — subnet /28 aware 
-└── SSH controllable per mode via iptables
+br-wifi_iso (wlan0-1)   
+└── isolated client subnet — all WiFi clients   
+└── Shaper applied here — subnet /28 aware   
+└── SSH controllable per mode via iptables  
 
 ---
 
@@ -112,19 +112,19 @@ br-wifi_iso (wlan0-1)
 ---
 
 ## Boot Sequence
-procd → S95modeboot
-→ GPIO read (pins 18, 20)
-→ Guest+Emergency WiFi disabled
-→ mode_manager → modeX.sh
-→ network restart
-→ led_daemon spawned
-→ modeboot_mode_exec written (MODE + timestamp)
-→ modeboot_running cleared
-→ trap - EXIT (normal completion)
-Toggle buttons during boot:
-→ modeboot_running check → ignored
-→ toggle_normal + AGE check → ghost bounce suppressed
-→ real user press after boot → mode switch enabled
+procd → S95modeboot  
+→ GPIO read (pins 18, 20)  
+→ Guest+Emergency WiFi disabled  
+→ mode_manager → modeX.sh  
+→ network restart  
+→ led_daemon spawned  
+→ modeboot_mode_exec written (MODE + timestamp)  
+→ modeboot_running cleared  
+→ trap - EXIT (normal completion)  
+Toggle buttons during boot:  
+→ modeboot_running check → ignored  
+→ toggle_normal + AGE check → ghost bounce suppressed  
+→ real user press after boot → mode switch enabled  
 
 ---
 
@@ -153,58 +153,58 @@ Toggle SSH via WiFi anytime: mr menu option 7 (blocked in Mode2).
 ---
 
 ## mr Menu
-Toggle Guest WiFi
-System Status (RAM / WAN IP / Mode)
-Toggle Shaper (Limit 480p Video)
-Show Devices + Shaper Config
-Enter Device Details for Shaper
-Check Shaper tc Details
-Toggle SSH via WiFi (blocked in MODE2)
-Toggle wan_watch (cron)
-Backup extroot/overlay (ready to scp)
-q) Exit
+Toggle Guest WiFi  
+System Status (RAM / WAN IP / Mode)  
+Toggle Shaper (Limit 480p Video)  
+Show Devices + Shaper Config  
+Enter Device Details for Shaper  
+Check Shaper tc Details  
+Toggle SSH via WiFi (blocked in MODE2)  
+Toggle wan_watch (cron)  
+Backup extroot/overlay (ready to scp)  
+q) Exit  
 
 
 ---
 
 ## File Structure
-/root/
-mode_manager.sh       — mode dispatcher
-mode3_watchdog.sh     — WiFi WAN monitor + fallback
-led_daemon.sh         — LED state controller
-hotspot_swap.sh       — WPS hotspot SSID swap
-wan_watch.sh          — WAN ping watchdog (cron)
-modes/
-mode1.sh            — USB WAN setup
-mode2.sh            — RJ45 WAN + eth0 bridge isolation
-mode3.sh            — WiFi WAN env setup
-/etc/
-toggle_resolve.sh     — button event → mode resolution
-init.d/modeboot       — boot GPIO detection + sequencing
-init.d/shaper         — HTB traffic shaper
-rc.button/wps         — WPS button action handler
-/usr/bin/
-mr                    — management menu
+/root/  
+mode_manager.sh       — mode dispatcher  
+mode3_watchdog.sh     — WiFi WAN monitor + fallback  
+led_daemon.sh         — LED state controller  
+hotspot_swap.sh       — WPS hotspot SSID swap  
+wan_watch.sh          — WAN ping watchdog (cron)  
+modes/  
+mode1.sh            — USB WAN setup  
+mode2.sh            — RJ45 WAN + eth0 bridge isolation  
+mode3.sh            — WiFi WAN env setup  
+/etc/  
+toggle_resolve.sh     — button event → mode resolution  
+init.d/modeboot       — boot GPIO detection + sequencing  
+init.d/shaper         — HTB traffic shaper  
+rc.button/wps         — WPS button action handler  
+/usr/bin/  
+mr                    — management menu  
 
 ---
 
 ## Excluded from Repo
-GPIO-Predefined     — SSID, keys, shaper config (personal)
-hotspot_sets        — hotspot credentials (personal)
-/etc/config/        — wireless, network, dhcp, firewall (personal)
+GPIO-Predefined     — SSID, keys, shaper config (personal)  
+hotspot_sets        — hotspot credentials (personal)  
+/etc/config/        — wireless, network, dhcp, firewall (personal)  
 
-Add to .gitignore:
-GPIO-Predefined
-hotspot_sets
+Add to .gitignore:  
+GPIO-Predefined  
+hotspot_sets  
 
 ---
 
 ## RAM Profile
-Boot completed:    ~2.2MB free
-Settled (cached):  ~6MB effective free
-CPU idle:          ~92%
-Shaper overhead:   negligible
-br-wifi_iso:       negligible (kernel bridge)
+Boot completed:    ~2.2MB free  
+Settled (cached):  ~6MB effective free  
+CPU idle:          ~92%  
+Shaper overhead:   negligible  
+br-wifi_iso:       negligible (kernel bridge)  
 
 ---
 
